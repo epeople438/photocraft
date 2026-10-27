@@ -9,6 +9,17 @@ pub use photocraft_text::served::{ServedFont, add_families, add_fonts, is_relati
 
 use crate::PhotocraftApp;
 
+/// Hands the delivered script fallback fonts (`Hans` for Chinese, ...) to the UI as well, so menus
+/// and panels in a CJK language render on the web. Call it before [`install`] with the same files.
+pub fn add_ui_fonts(ctx: &egui::Context, delivered: &[(String, Vec<u8>)]) {
+    let fallbacks = photocraft_text::served::script_fallback_families();
+    for (family, bytes) in delivered {
+        if fallbacks.contains(family) {
+            crate::cjk_fonts::add_served_ui_font(ctx, family, bytes);
+        }
+    }
+}
+
 /// Layers whose document was busy with a background job when their font arrived.
 static PENDING: Mutex<Vec<(DocId, LayerId)>> = Mutex::new(Vec::new());
 

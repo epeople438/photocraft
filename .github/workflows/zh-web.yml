@@ -1,0 +1,48 @@
+# Builds only the browser version of this fork (Chinese UI font patch) and publishes the zip as a
+# release in this repository, tagged v<version>-zh.<run number>. Run it from the Actions tab or by
+# pushing the zh-web branch. The toolstation site downloads that zip (scripts/photocraft-update.sh).
+name: zh-web build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [zh-web]
+
+permissions:
+  contents: write
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TRUNK_VERSION: 0.21.14
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: zh-web
+          cache-on-failure: true
+      - name: Install trunk
+        run: |
+          curl --proto '=https' -fsSL "https://github.com/trunk-rs/trunk/releases/download/v${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C "$HOME/.cargo/bin" trunk
+          trunk --version
+      - name: Build browser release
+        run: packaging/web/package.sh
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          zip="$(ls dist/release/photocraft-web-*.zip | head -n 1)"
+          [ -n "$zip" ] || { echo "no zip produced" >&2; exit 1; }
+          version="$(basename "$zip" .zip)"; version="${version#photocraft-web-}"
+          tag="v${version}-zh.${GITHUB_RUN_NUMBER}"
+          ls -l "$zip"
+          gh release create "$tag" "$zip" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "$tag" --notes "Browser build with the served CJK font also used by the UI (branch zh-web, ${GITHUB_SHA})."

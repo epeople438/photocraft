@@ -369,6 +369,32 @@ fn add_to_all_families(ctx: &egui::Context, name: String, mut data: FontData) {
     ctx.add_font(FontInsert { name, data, families });
 }
 
+/// Script fallback fonts the web host serves (`fonts/manifest.txt`), for the UI too. The web build
+/// reads no system fonts, so without them a Chinese, Japanese or Korean interface draws empty
+/// boxes. Kept here because a font re-install (a language change) drops them from the stack.
+static SERVED_UI_FONTS: std::sync::Mutex<Vec<(String, std::sync::Arc<Vec<u8>>)>> = std::sync::Mutex::new(Vec::new());
+
+/// Adds a served font to every UI family at the lowest priority, from the next frame on.
+pub(crate) fn add_served_ui_font(ctx: &egui::Context, family: &str, bytes: &[u8]) {
+    let name = format!("served-ui-{family}");
+    let mut fonts = SERVED_UI_FONTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if !fonts.iter().any(|(n, _)| *n == name) {
+        fonts.push((name, std::sync::Arc::new(bytes.to_vec())));
+    }
+    ctx.request_repaint();
+}
+
+/// Registers the served UI fonts the active stack lacks (just arrived, or dropped by `set_fonts`).
+fn restore_served_ui_fonts(ctx: &egui::Context) {
+    let fonts = SERVED_UI_FONTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+    for (name, bytes) in fonts {
+        if !ctx.fonts(|f| f.definitions().font_data.contains_key(&name)) {
+            add_to_all_families(ctx, name, FontData::from_owned((*bytes).clone()));
+            ctx.request_repaint();
+        }
+    }
+}
+
 /// The egui plugin that watches drawn text and loads fallback fonts on demand.
 pub struct CjkFontPlugin(pub CjkFallback);
 
@@ -382,6 +408,7 @@ impl egui::Plugin for CjkFontPlugin {
             ctx.request_repaint();
             return;
         }
+        restore_served_ui_fonts(ctx);
         if self.0.exhausted() && self.0.scripts_exhausted() {
             return;
         }

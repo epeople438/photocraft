@@ -319,6 +319,7 @@ impl WebShell {
                 }
             });
         }
+        served_fonts::add_ui_fonts(ctx, &arrived);
         served_fonts::install(&mut self.app, arrived);
     }
 }
